@@ -1,0 +1,7 @@
+# Local client. The mock backend needs nothing beyond the standard library.
+anthropic>=0.40      # --backend haiku
+openai>=1.50         # --backend vllm (OpenAI-compatible client for the vLLM server)
+modal>=0.70          # deploying serve.py and running train_lora.py on a rented GPU
+
+# dev
+pytest>=8

@@ -1,0 +1,27 @@
+# run artifacts
+run.jsonl
+*.jsonl
+!personas.json
+lora_data/
+*.gif
+*.png
+
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# secrets / local
+.env
+.modal.toml
+
+# editors / os
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
