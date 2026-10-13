@@ -21,6 +21,7 @@ by_persona = defaultdict(list)
 for path in sys.argv[1:] or ["run.jsonl"]:
     for line in open(path):
         r = json.loads(line)
+        if "persona" not in r: continue                                 # meta header line
         by_persona[r["persona"]].append({"messages": [
             {"role": "system", "content": RULES},                       # rules only — no persona text
             {"role": "user", "content": r["obs"]},

@@ -5,6 +5,9 @@ run.jsonl
 lora_data/
 *.gif
 *.png
+# ...except the README demo
+!docs/*.gif
+!docs/*.png
 
 # python
 __pycache__/

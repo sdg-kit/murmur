@@ -21,7 +21,7 @@ def load(paths):
 
 
 def main(paths):
-    rows = list(load(paths))
+    rows = [r for r in load(paths) if "persona" in r]      # skip the meta header line
     if not rows:
         print("no rows"); return
 

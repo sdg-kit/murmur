@@ -8,8 +8,9 @@ sleeps when idle). No Linux, Docker, or CUDA install needed locally.
 2. PowerShell:
    ```
    py -m pip install --upgrade pip
-   py -m pip install anthropic openai modal
+   py -m pip install anthropic openai modal pillow
    ```
+   (Nothing is needed for the default `py murmur.py` scripted demo; `pillow` is for `render.py`.)
 
 ## 1. Claude API key (for generating persona training data — optional but recommended)
 1. platform.claude.com → sign in / create account → Plans & Billing → add $10.

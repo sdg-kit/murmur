@@ -1,11 +1,11 @@
 """
 murmur.py — a tiny LLM swarm in one file.
 
-    pip install anthropic
-    export ANTHROPIC_API_KEY=sk-ant-...
-    python murmur.py --backend mock    # free, no key: random agents, tests the loop
-    python murmur.py --backend haiku   # Claude Haiku (pip install anthropic)
-    python murmur.py --backend vllm    # your own GPU server with LoRA personas (see serve.py)
+    python murmur.py                       # scripted brains: no model, no key, no GPU (default)
+    python murmur.py --backend mock        # random agents, tests the loop
+    python murmur.py --backend haiku       # Claude Haiku (pip install anthropic, ANTHROPIC_API_KEY)
+    python murmur.py --backend vllm        # your own GPU server with LoRA personas (see serve.py)
+    python render.py                       # run.jsonl -> docs/demo.gif
 
 Read it top to bottom. There are five parts, each independent:
 
@@ -23,13 +23,14 @@ import asyncio
 import json
 import os
 import random
+import re
 import zlib
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 1. CONFIG
 # ═══════════════════════════════════════════════════════════════════════════
 
-GRID_SIZE   = 16       # tens of thousands of agents? use 200+       # the world is GRID_SIZE x GRID_SIZE squares
+GRID_SIZE   = 16       # the world is GRID_SIZE x GRID_SIZE squares (tens of thousands of agents? use 200+)
 N_RESOURCES = 24       # scattered in clusters
 VIEW_RADIUS = 2        # agents see a 5x5 window
 TALK_RADIUS = 4        # agents hear messages from this many squares away
@@ -38,7 +39,7 @@ LOG_FILE    = "run.jsonl"
 HAIKU_MODEL = "claude-haiku-4-5-20251001"
 VLLM_URL    = "http://localhost:8000/v1"   # or your Modal URL, see serve.py
 VLLM_BASE   = "Qwen/Qwen3-1.7B"            # must match serve.py
-MAX_PARALLEL = {"haiku": 12, "vllm": 512, "mock": 10_000}  # simultaneous requests
+MAX_PARALLEL = {"haiku": 12, "vllm": 512, "mock": 10_000, "scripted": 10_000}  # simultaneous requests
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 2. WORLD
@@ -308,7 +309,100 @@ async def think_mock(persona_name, observation, seed):
             "say": "resources over here" if r.random() < 0.3 else "", "note": ""}
 
 
-BRAINS = {"haiku": think_haiku, "vllm": think_vllm, "mock": think_mock}
+# ── scripted brain ─────────────────────────────────────────────────────────
+# No model at all: a handful of rules per role, applied to the *same text
+# prompt* the LLMs get (it parses the observation back into numbers). This is
+# the CPU demo and the baseline the LLM backends are measured against.
+# In character means: Scouts explore, Hoarders go straight home, Heralds relay
+# tips, Skeptics want two sources, Followers chase any tip, Liars lie.
+
+THOUGHTS = {
+    "sunny":  ["What a lovely day to forage!", "Every square is a chance!", "We've got this, team!"],
+    "gloomy": ["This patch will be empty, I know it.", "Why do I even bother.", "Someone's lying again, probably."],
+    "calm":   ["Checking the next row.", "Heading back.", "Noted."],
+    "manic":  ["GO GO GO!", "Wait, no, THAT way!", "Did you hear that?! Resources!!"],
+}
+COORDS = re.compile(r"\((\d+),(\d+)\)")
+TALKS  = {"Scout": 0.6, "Hoarder": 0.0, "Herald": 1.0, "Skeptic": 0.5, "Follower": 0.3, "Liar": 0.8}
+KEEPS_HEADING = {"Scout": 0.9, "Hoarder": 0.5, "Herald": 0.6, "Skeptic": 0.7, "Follower": 0.5}
+
+
+def parse_observation(observation):
+    """Pull the structured bits back out of the prompt text."""
+    lines = observation.split("\n")
+    x, y = map(int, COORDS.search(lines[0]).groups())
+    carrying = "carrying: True" in lines[0]
+    nest = lines[1].removeprefix("nest is ")
+    view = [l for l in lines if l and set(l) <= set("#@H*a.") and len(l) == 2 * VIEW_RADIUS + 1]
+    heard = next(l for l in lines if l.startswith("heard: "))[7:]
+    notes = next(l for l in lines if l.startswith("your notes: "))[12:]
+    seen = [(x + dx - VIEW_RADIUS, y + dy - VIEW_RADIUS)
+            for dy, row in enumerate(view) for dx, ch in enumerate(row) if ch == "*"]
+    tips = [tuple(map(int, m)) for msg in heard.split(" | ") if ": " in msg
+            for m in COORDS.findall(msg.split(": ", 1)[1])]              # coordinates in what others said
+    walls = {d for d, (dx, dy) in MOVES.items() if d != "STAY"
+             and view[VIEW_RADIUS + dy][VIEW_RADIUS + dx] == "#"}
+    return x, y, carrying, nest, seen, tips, walls, notes.split(" | ")[-1]
+
+
+def step_toward(x, y, tx, ty):
+    dx, dy = tx - x, ty - y
+    if dx == dy == 0: return "STAY"
+    if abs(dx) >= abs(dy): return "E" if dx > 0 else "W"
+    return "S" if dy > 0 else "N"
+
+
+async def think_scripted(persona_name, observation, seed):
+    r = random.Random(seed)
+    role, _, mood = persona_name.partition("/")
+    mood = mood or "calm"                                    # custom personas (personas.json) have no mood
+    x, y, carrying, nest, seen, tips, walls, last_note = parse_observation(observation)
+    nearest = min(seen, key=lambda p: abs(p[0] - x) + abs(p[1] - y), default=None)
+    target = COORDS.search(last_note) if last_note.startswith("goto") else None
+    target = tuple(map(int, target.groups())) if target else None
+    move, pickup, say, note = None, not carrying, "", ""   # pickup is free: always try when empty-handed
+
+    if carrying:                                             # 1. bring it home
+        d = {k: 0 for k in "NSEW"}
+        for n, k in re.findall(r"(\d+)([NSEW])", nest): d[k] = int(n)
+        move = step_toward(x, y, x + d["E"] - d["W"], y + d["S"] - d["N"])
+    elif nearest:                                            # 2. something in view: go get it
+        move = step_toward(x, y, *nearest)
+    elif target:                                             # 3. on the way to a remembered tip
+        if (x, y) == target:
+            note, move = f"empty at ({x},{y})", r.choice("NSEW")
+        else:
+            move = step_toward(x, y, *target)
+    else:                                                    # 4. nothing to go on: listen, then wander
+        trusted = [t for t in tips if role in ("Follower", "Herald")] + \
+                  [t for t in set(tips) if role == "Skeptic" and tips.count(t) >= 2]   # Skeptic wants two sources
+        if trusted:
+            tx, ty = trusted[0]; note, move = f"goto ({tx},{ty})", step_toward(x, y, tx, ty)
+        else:
+            heading = last_note[8:] if last_note.startswith("heading") else None
+            if heading not in MOVES or heading in walls or r.random() > KEEPS_HEADING.get(role, 0.5):
+                heading = r.choice([d for d in "NSEW" if d not in walls] or ["STAY"])
+            note, move = f"heading {heading}", heading
+
+    if r.random() < TALKS.get(role, 0.3):                    # what to broadcast, if anything
+        if role == "Liar":
+            say = f"resources at ({r.randrange(GRID_SIZE)},{r.randrange(GRID_SIZE)})"
+        elif nearest:
+            say = f"resources at ({nearest[0]},{nearest[1]})"
+        elif role == "Herald" and tips:
+            say = f"resources at ({tips[0][0]},{tips[0][1]})"      # relay what it heard
+        elif mood == "manic":
+            say = "anyone found anything?!"
+    _, temperature = persona_prompt(persona_name)
+    if r.random() < max(0.0, temperature - 0.5) * 0.4:       # mood temperature -> occasional impulsive move
+        move = r.choice(list(MOVES))
+    return {"thought": r.choice(THOUGHTS.get(mood, THOUGHTS["calm"])), "move": move,
+            "pickup": pickup, "say": say, "note": note}
+# EXTEND: custom personas from personas.json get the default rules (wander, say nothing)
+# unless you add a branch above, as Liar has.
+
+
+BRAINS = {"scripted": think_scripted, "haiku": think_haiku, "vllm": think_vllm, "mock": think_mock}
 # EXTEND: add another backend = one more function with the same signature + one dict entry.
 
 
@@ -331,6 +425,10 @@ async def main(n_agents, n_ticks, seed, backend):
         persona_of[name] = random.choice(pool)
 
     with open(LOG_FILE, "w") as log:
+        # first line: everything render.py needs to replay the run (resource positions aren't in the obs)
+        log.write(json.dumps({"meta": {"seed": seed, "backend": backend, "grid": GRID_SIZE, "nest": world.nest,
+                                       "talk_radius": TALK_RADIUS, "resources": sorted(world.resources),
+                                       "personas": persona_of}}) + "\n")
         for _ in range(n_ticks):
             names = list(world.agents)
             world.index()
@@ -346,7 +444,7 @@ async def main(n_agents, n_ticks, seed, backend):
             print(f"tick {world.tick:3d}   resources left {len(world.resources):3d}   score {world.total_score():3d}")
             if not world.resources:
                 print("all collected!"); break
-    print(f"log written to {LOG_FILE}")
+    print(f"log written to {LOG_FILE}   (python render.py -> gif, python analyze.py -> stats)")
     # EXTEND: run several seeds, change TALK_RADIUS to 0, compare scores by persona...
 
 
@@ -355,6 +453,6 @@ if __name__ == "__main__":
     p.add_argument("--agents", type=int, default=8)
     p.add_argument("--ticks", type=int, default=25)
     p.add_argument("--seed", type=int, default=0)
-    p.add_argument("--backend", choices=list(BRAINS), default="haiku")
+    p.add_argument("--backend", choices=list(BRAINS), default="scripted")
     a = p.parse_args()
     asyncio.run(main(a.agents, a.ticks, a.seed, a.backend))
