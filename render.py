@@ -18,12 +18,13 @@ from PIL import Image, ImageDraw, ImageFont
 
 from murmur import MOVES, GRID_SIZE, TALK_RADIUS
 
-COLORS = {"Scout": (46, 196, 182), "Hoarder": (255, 159, 28), "Herald": (155, 93, 229),
-          "Skeptic": (65, 130, 255), "Follower": (112, 193, 70), "Liar": (231, 29, 54)}
-OTHER     = (160, 160, 160)
-BG, GRIDC = (24, 24, 28), (44, 44, 50)
-NEST, RES = (235, 235, 235), (255, 214, 10)
-TEXT      = (220, 220, 220)
+# Categorical palette, dark-surface steps, fixed slot order (same hues as figures.py's light steps).
+COLORS = {"Scout": (57, 135, 229), "Hoarder": (217, 89, 38), "Herald": (25, 158, 112),
+          "Skeptic": (201, 133, 0), "Follower": (213, 81, 129), "Liar": (0, 131, 0)}
+OTHER     = (137, 135, 129)
+BG, GRIDC = (26, 26, 25), (44, 44, 42)
+NEST, RES = (240, 239, 236), (195, 194, 183)
+TEXT      = (195, 194, 183)
 
 
 def role_of(persona):
@@ -126,9 +127,10 @@ def draw_frame(meta, frame, cell):
             d.text((x0 + cell * 0.55, y0), role, fill=TEXT, font=f_small)
             x0 += cell * 0.55 + d.textlength(role, font=f_small) + cell * 0.5
     said = [(n, a[4], a[3]) for n, a in sorted(agents.items()) if a[3]]
-    for i, (n, persona, msg) in enumerate(said[:2]):
-        d.text((8, y0 + cell * 0.6 + i * cell * 0.55), f"{n} {persona}: {msg}"[:int(W / (cell * 0.23))],
-               fill=COLORS.get(role_of(persona), OTHER), font=f_small)
+    for i, (n, persona, msg) in enumerate(said[:2]):                 # colored dot carries identity, text stays neutral
+        ty = y0 + cell * 0.6 + i * cell * 0.55
+        d.ellipse([8, ty + 3, 8 + cell * 0.3, ty + 3 + cell * 0.3], fill=COLORS.get(role_of(persona), OTHER))
+        d.text((8 + cell * 0.45, ty), f"{n} {persona}: {msg}"[:int(W / (cell * 0.23))], fill=TEXT, font=f_small)
     return img
 
 

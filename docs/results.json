@@ -1,0 +1,114 @@
+{
+ "settings": {
+  "agents": 24,
+  "ticks": 40,
+  "seeds": [
+   1,
+   2,
+   3,
+   4,
+   5
+  ],
+  "grid": 16
+ },
+ "ablation": {
+  "liars=True talk=4": {
+   "final": [
+    15,
+    15,
+    18,
+    19,
+    19
+   ],
+   "mean": 17.2,
+   "sd": 1.833030277982336
+  },
+  "liars=True talk=0": {
+   "final": [
+    18,
+    15,
+    17,
+    21,
+    19
+   ],
+   "mean": 18,
+   "sd": 2.0
+  },
+  "liars=False talk=4": {
+   "final": [
+    20,
+    17,
+    15,
+    21,
+    21
+   ],
+   "mean": 18.8,
+   "sd": 2.4
+  },
+  "liars=False talk=0": {
+   "final": [
+    17,
+    16,
+    19,
+    18,
+    16
+   ],
+   "mean": 17.2,
+   "sd": 1.1661903789690602
+  }
+ },
+ "by_role": {
+  "Skeptic": {
+   "deliveries_per_agent": 0.7303030303030303,
+   "messages_per_agent_tick": 0.27742869875222814,
+   "agents_total": 24
+  },
+  "Scout": {
+   "deliveries_per_agent": 0.7266666666666667,
+   "messages_per_agent_tick": 0.2413970588235294,
+   "agents_total": 16
+  },
+  "Liar": {
+   "deliveries_per_agent": 0.9080952380952381,
+   "messages_per_agent_tick": 0.8048816526610644,
+   "agents_total": 28
+  },
+  "Hoarder": {
+   "deliveries_per_agent": 0.95,
+   "messages_per_agent_tick": 0.0,
+   "agents_total": 19
+  },
+  "Follower": {
+   "deliveries_per_agent": 0.43,
+   "messages_per_agent_tick": 0.08977941176470589,
+   "agents_total": 22
+  },
+  "Herald": {
+   "deliveries_per_agent": 0.26666666666666666,
+   "messages_per_agent_tick": 0.8200735294117647,
+   "agents_total": 11
+  }
+ },
+ "by_mood": {
+  "manic": {
+   "deliveries_per_agent": 0.7,
+   "messages_per_agent_tick": 0.60675,
+   "agents_total": 16
+  },
+  "calm": {
+   "deliveries_per_agent": 0.7323809523809524,
+   "messages_per_agent_tick": 0.14945098039215687,
+   "agents_total": 30
+  },
+  "gloomy": {
+   "deliveries_per_agent": 0.4819047619047619,
+   "messages_per_agent_tick": 0.22945938375350142,
+   "agents_total": 27
+  },
+  "sunny": {
+   "deliveries_per_agent": 0.7214285714285714,
+   "messages_per_agent_tick": 0.22785714285714284,
+   "agents_total": 19
+  }
+ }
+}
